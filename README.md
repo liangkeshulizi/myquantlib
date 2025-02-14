@@ -1,10 +1,6 @@
 # MyQuantLib
 
-<span style="display: inline-block;">
-  ![Static Badge](https://img.shields.io/badge/license-MIT-red)
-  ![Static Badge](https://img.shields.io/badge/language-Python-blue)
-  ![Static Badge](https://img.shields.io/badge/author-Evans_Li-yellow)
-</span>
+![Static Badge](https://img.shields.io/badge/license-MIT-red) ![Static Badge](https://img.shields.io/badge/language-Python-blue) ![Static Badge](https://img.shields.io/badge/author-Evans_Li-yellow)
 
 A native and hackable neural network quantization library based on pytorch for research purposes.
 
