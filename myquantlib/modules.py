@@ -3,10 +3,20 @@ import torch
 from torch import nn
 from torch import Tensor
 from torch.quantization import ObserverBase
-import torch.nn.quantized
 from typing import Optional
 
 from .functional_utils import *
+
+__all__ = [
+    "MyQuantizedModule",
+    "MyQuantizedWrapper",
+    "MyQuantizedIdentity",
+    "MyQuantizedReLU",
+    "MyQuantize",
+    "MyDeQuantize",
+    "MyQuantizedLinear",
+    "MyQuantizedConv2d"
+]
 
 
 class MyQuantizedModule(nn.Module, abc.ABC):
@@ -86,7 +96,7 @@ class MyQuantize(MyQuantizedModule):
         super().__init__()
         self.scale, self.zero_point = scale, zero_point
 
-    def _forward_qparams(self, input_qparam: None) -> tuple:
+    def _forward_qparams(self, input_qparam: None = None) -> tuple:
         self.forward = self._forward_tensor
         return self.scale, self.zero_point
 
@@ -96,7 +106,7 @@ class MyQuantize(MyQuantizedModule):
 
     @classmethod
     def from_float(cls, mod: nn.Module, use_precomputed_fake_quant: bool = False):
-        assert hasattr(mod, "activation_post_process")
+        assert hasattr(mod, "activation_post_process"), "module not prepared before converting"
 
         scale, zero_point = mod.activation_post_process.calculate_qparams()
         return cls(float(scale), int(zero_point))
@@ -122,7 +132,7 @@ class MyDeQuantize(MyQuantizedModule):
 
 class MyQuantizedLinear(MyQuantizedModule):
     # NOTE:
-    #   - Only supports Post-Train Static Quantization.
+    #   - Supports Static Post-Train Quantization and Quantization-Aware Training.
     #   - Only supports per tensor symmetric/asymmetric quantization. (per channel quantization will be added soon)
     #   - Serialization currently not supported.
 
@@ -191,27 +201,30 @@ class MyQuantizedLinear(MyQuantizedModule):
             )
 
         # The following computation is the equivelent of:
-        # z_out = torch.round((z_int) * (input_scale * weight_scale)/output_scale)
+        # z_out8 = torch.round((z_int) * (self.input_scale * self.weight_scale)/self.output_scale + self.output_zero_point).clamp(-127, 127).to(torch.int8)
 
-        z_out32 = rounding_doubling_high_mul(z_int, torch.tensor(self.quantized_multiplier)) >> self.right_shift
-        z_out8 = (z_out32 + self.output_zero_point).to(torch.int8)
-
+        z_out32 = rounding_right_shift(rounding_doubling_high_mul(z_int, torch.tensor(self.quantized_multiplier)), self.right_shift)
+        z_out8 = (z_out32 + self.output_zero_point).clamp(-127, 127).to(torch.int8)
+        
         return z_out8
 
     @classmethod
     def from_float(cls, mod: nn.Linear, use_precomputed_fake_quant: bool = False):
-        if use_precomputed_fake_quant:
-            raise NotImplementedError
 
         assert hasattr(mod, "qconfig"), "Input float module must have qconfig defined"
-        assert hasattr(mod, "activation_post_process")
+        assert hasattr(mod, "activation_post_process"), "module not prepared before converting"
 
         # extract params from observer
         activation_observer: ObserverBase = mod.activation_post_process
-        weight_observer: ObserverBase = mod.qconfig.weight()
+        weight_observer: ObserverBase = (
+            mod.weight_fake_quant
+            if hasattr(mod, "weight_fake_quant")
+            else mod.qconfig.weight()
+        )
         assert activation_observer.dtype == torch.qint8 and weight_observer.dtype == torch.qint8
 
-        weight_observer(mod.weight)  # observe weight
+        if not use_precomputed_fake_quant:
+            weight_observer(mod.weight)  # observe weight
 
         output_scale, output_zero_point = activation_observer.calculate_qparams()
         weight_scale, weight_zero_point = weight_observer.calculate_qparams()
@@ -280,25 +293,31 @@ class MyQuantizedConv2d(MyQuantizedModule):
 
         z_int = nn.functional.conv2d(xq, wq, bias_q, self.stride, self.padding)  # NOTE: pad with zero since input_zero_point has already been subtracted
 
-        z_out32 = rounding_doubling_high_mul(z_int, torch.tensor(self.quantized_multiplier)) >> self.right_shift
-        z_out8 = (z_out32 + self.output_zero_point).to(torch.int8)
+        # The following computation is the equivelent of:
+        # z_out8 = torch.round((z_int) * (self.input_scale * self.weight_scale) / self.output_scale + self.output_zero_point).clamp(-127, 127).to(torch.int8)
+        
+        z_out32 = rounding_right_shift(rounding_doubling_high_mul(z_int, torch.tensor(self.quantized_multiplier)), self.right_shift)
+        z_out8 = (z_out32 + self.output_zero_point).clamp(-127, 127).to(torch.int8)
 
         return z_out8
 
     @classmethod
     def from_float(cls, mod: nn.Conv2d, use_precomputed_fake_quant: bool = False):
-        if use_precomputed_fake_quant:
-            raise NotImplementedError
 
         assert hasattr(mod, "qconfig"), "Input float module must have qconfig defined"
-        assert hasattr(mod, "activation_post_process")
+        assert hasattr(mod, "activation_post_process"), "module not prepared before converting"
 
         # extract params from observer
         activation_observer: ObserverBase = mod.activation_post_process
-        weight_observer: ObserverBase = mod.qconfig.weight()
+        weight_observer: ObserverBase = (
+            mod.weight_fake_quant
+            if hasattr(mod, "weight_fake_quant")
+            else mod.qconfig.weight()
+        )
         assert activation_observer.dtype == torch.qint8 and weight_observer.dtype == torch.qint8
 
-        weight_observer(mod.weight)  # observe weight
+        if not use_precomputed_fake_quant:
+            weight_observer(mod.weight)  # observe weight
 
         output_scale, output_zero_point = activation_observer.calculate_qparams()
         weight_scale, weight_zero_point = weight_observer.calculate_qparams()

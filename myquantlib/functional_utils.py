@@ -1,6 +1,14 @@
 import torch
 from torch import Tensor
 
+__all__ = [
+    "my_quantize_per_tensor",
+    "my_dequantize",
+    "quantize_multiplier_smaller_than_one",
+    "rounding_doubling_high_mul",
+    "rounding_right_shift"
+]
+
 # A naive implementation of torch.quantize_per_tensor, but returns raw torch.int8
 def my_quantize_per_tensor(tensor: Tensor, scale: float, zero_point: int) -> Tensor:
     return torch.clamp(torch.round(tensor / scale + zero_point), -128, 127).to(torch.int8)
@@ -37,3 +45,16 @@ def rounding_doubling_high_mul(a: Tensor, b: Tensor):
     nudge = torch.where(ab_64 >= 0, (1 << 30), (1 - (1 << 30))).to(torch.int64)
     ab_32 = ((ab_64 + nudge) >> 31).to(torch.int32)
     return ab_32
+
+# This function implements right shift with correct round-to-nearest behavior (y = round( x / 2 ^ n ))
+def rounding_right_shift(x: torch.Tensor, exponent: int) -> torch.Tensor:
+    assert x.dtype == torch.int32, "rounding_right_shift only supports int32 tensors"
+    mask = (1 << exponent) - 1
+    remainder = x & mask
+    threshold = 1 << (exponent - 1)
+
+    # fixup = 1 where remainder >= threshold, else 0
+    fixup = (remainder >= threshold).to(x.dtype)
+
+    fixed_x = x + fixup
+    return fixed_x >> exponent

@@ -1,8 +1,11 @@
 from torch.quantization import QuantStub, DeQuantStub
 from torch.nn import *
+from torch.ao.nn import qat
 from .modules import *
 
-__all__ = ["MY_QUANT_MODULE_MAPPINGS"]
+__all__ = [
+    "MY_QUANT_MODULE_MAPPINGS",
+]
 
 MY_QUANT_MODULE_MAPPINGS = {
     QuantStub: MyQuantize,
@@ -17,4 +20,8 @@ MY_QUANT_MODULE_MAPPINGS = {
     ReLU: MyQuantizedReLU,
     
     Flatten: MyQuantizedWrapper,
+
+    # QAT modules:
+    qat.Linear: MyQuantizedLinear,
+    qat.Conv2d: MyQuantizedConv2d,
 }

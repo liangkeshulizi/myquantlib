@@ -11,13 +11,13 @@ A native and hackable neural network quantization library based on pytorch for r
 
 Neural network quantization is a powerful technique and hot research topic that drastically reduces the memory and computational requirements to run a model by representing weights and activations with lower precision, such as 8-bit integers instead of 32-bit floating-point numbers. This makes models more efficient, especially on resource-constrained devices like mobile phones and edge devices.
 
-Pytorch provides native API for quantization (Eager Mode & Graph FX), and they uses quantization libraries like `qnnpack` and `fbgemm` for inference under the hood. However, those quantization libraries are mostly written in C or Assembly, some are close-source, making it hard to understand what's actually happenning, impossible to tinker with the algorithm. Using them with custom backends (hardware accelerators) means heavy reliance on these 
+Pytorch provides native API for quantization (Eager Mode & Graph FX), and they uses quantization libraries like `qnnpack` and `fbgemm` for inference under the hood. However, those quantization libraries are mostly written in C or Assembly, some are close-source, making it hard to understand what's actually happenning, impossible to tinker with the algorithm. Using them with custom backends (hardware accelerators) means heavy reliance on these libraries.
 
 MyQuantLib implements the quantization algorithm and quantized inference in plain Pytorch with naive `torch.int8`. It makes it easy to understand how quantied layers are computed, implement it on custom backends (hardware accelerators) and tinker with different algorithm. Besides, it innovatively uses an dry-run pass to connect quantization parameters (qparams) between layers and pre-compute all the paramters before the real forward pass, improving performance and eliminating any need of floating-point computation (especially bias) during inference, making it possible to be implemented on a hardware without floating-point support.
 
 MyQuantLib supports 8-bit Static Post-Training Quantization (PTQ). This is a method where quantization occurs after the model is trained, without requiring retraining. It works by analyzing the activations of the pre-trained model on a representative dataset to gather statistics like the min and max values. These statistics are used to determine the scaling factors for the weights and activations.
 
-This package is a side project of one of my undergrad research projects. It is inspired by [gemmlowp](https://github.com/google/gemmlowp).
+This package is a side project of one of my undergrad research projects. It is inspired by [gemmlowp](https://github.com/google/gemmlowp) and [Jacob et al., 2018](https://arxiv.org/abs/1712.05877).
 
 Dynamic Quantization, variable bit quantization and more operations will be added in the near future.
 
@@ -26,13 +26,13 @@ Dynamic Quantization, variable bit quantization and more operations will be adde
 To install the project from PyPI, run:
 
 ```sh
-pip install myquantlib
+pip install py-myquantlib
 ```
 
 Or if you want to clone the repository directly from github and build locally (recommended), run:
 
 ```sh
-git clone 
+git clone https://github.com/liangkeshulizi/myquantlib.git
 pip install -e /path/to/myquantlib
 ```
 
